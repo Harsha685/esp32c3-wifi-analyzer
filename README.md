@@ -50,6 +50,29 @@ make -C firmware/test_native          # CRC, parser (incl. truncation), stats, r
 host/.venv/bin/python -m unittest discover -s host/tests   # decoder, resync, CRC, seq gaps, C/Python golden frame
 ```
 
+## Measured results
+One 48-minute capture (2026-10-15, residential area, board stationary, channel hopping, 200 ms dwell),
+logged to SQLite by `host/logger.py`:
+
+| Metric | Result |
+|---|---|
+| Channel sweep | all 13 channels, one full sweep every 2.6 s |
+| Frames captured | 228,267 in 2,882 s — mean 79/s, median 47/s, p95 265/s, peak 1,208/s (1 s bucket) |
+| Networks observed | 21 distinct BSSIDs (16 named SSIDs); table capacity 64 |
+| Ring buffer (256 slots) | high-water mark 29 slots, **0 frames dropped** |
+| Link integrity | 0 CRC errors, 0 resyncs; 2,883 reports in 2,882 s |
+| Static RAM, app structures | 60 KB (55,296 B ring + 4,788 B stats table); 89 KB total static RAM (27% of 320 KB) |
+| Heap | 164,960 B free, constant for the whole run (no growth); 138,528 B minimum ever |
+| Flash | 699 KB image (67% of the 1 MB app partition) |
+
+Caveats: a single location and run, not a stress test. The peak rate is bursts heard on one channel,
+not a throughput limit — the ring never exceeded 12% occupancy. CPU load has not been measured.
+`missing=178` at the start of the run is a start-up artifact: the device was already sending before
+the logger opened the port; no frames were lost afterwards.
+
+The dashboard is a PC-side matplotlib window that re-reads the SQLite file every 2 s while the logger
+writes it (about 3 s end to end). The device itself serves nothing.
+
 ## Status
 | Phase | State |
 |---|---|
