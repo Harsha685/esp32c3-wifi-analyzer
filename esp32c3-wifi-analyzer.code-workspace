@@ -1,0 +1,14 @@
+{
+  "folders": [
+    { "name": "firmware (PlatformIO)", "path": "firmware" },
+    { "name": "host (Python)", "path": "host" },
+    { "name": "docs & protocol", "path": "." }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder:host (Python)}/.venv/bin/python",
+    "files.exclude": { "**/.pio": true, "**/.venv": true, "**/__pycache__": true }
+  },
+  "extensions": {
+    "recommendations": ["platformio.platformio-ide", "ms-vscode.cpptools", "ms-python.python"]
+  }
+}

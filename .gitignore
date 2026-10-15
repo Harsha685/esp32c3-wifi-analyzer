@@ -1,0 +1,9 @@
+.pio/
+.venv/
+__pycache__/
+host/data/
+firmware/test_native/test_core
+firmware/test_native/golden_frame.bin
+*.png
+!docs/*.png
+/.vscode/
