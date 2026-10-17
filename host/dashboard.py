@@ -3,6 +3,7 @@
 
 Usage:  python dashboard.py --db data/capture.db            # live, refreshes every 2 s
         python dashboard.py --db data/capture.db --save out.png
+        python dashboard.py --db data/capture.db --minutes 10 --ssid Harsha   # one network by name
 """
 from __future__ import annotations
 
@@ -23,12 +24,12 @@ def load(db: sqlite3.Connection, minutes: float | None):
     }
 
 
-def draw(axes, d) -> None:
+def draw(axes, d, ssid: str | None = None) -> None:
     ax_rssi, ax_act, ax_aps, ax_pps = axes
     for a in axes:
         a.clear()
 
-    # 1. RSSI vs time for the 6 APs with the most samples
+    # 1. RSSI vs time: the 6 strongest APs (by mean RSSI), or every AP whose name contains --ssid
     series: dict[str, list] = defaultdict(list)
     names: dict[str, str] = {}
     for ts, bssid, ssid, rssi, _ in d["ap"]:
@@ -36,10 +37,16 @@ def draw(axes, d) -> None:
         names[bssid] = ssid or bssid
     if series:
         t0 = d["ap"][0][0]
-        for bssid in sorted(series, key=lambda b: -len(series[b]))[:6]:
+        if ssid:
+            chosen = [b for b in series if ssid.lower() in names[b].lower()]
+        else:
+            mean = lambda b: sum(r for _, r in series[b]) / len(series[b])
+            chosen = sorted(series, key=lambda b: -mean(b))[:6]
+        for bssid in chosen:
             pts = series[bssid]
             ax_rssi.plot([t - t0 for t, _ in pts], [r for _, r in pts], label=names[bssid])
-        ax_rssi.legend(fontsize=7, loc="lower right")
+        if chosen:
+            ax_rssi.legend(fontsize=7, loc="lower right")
     ax_rssi.set(title="RSSI vs time", xlabel="s", ylabel="dBm")
 
     # 2. Channel activity: frames per second spent listening (delta frames / delta dwell)
@@ -86,6 +93,7 @@ def main() -> None:
     ap.add_argument("--db", default="data/capture.db")
     ap.add_argument("--save", help="write a PNG and exit")
     ap.add_argument("--minutes", type=float, help="only the last N minutes")
+    ap.add_argument("--ssid", help="plot only networks whose name contains this text")
     ap.add_argument("--interval", type=float, default=2.0, help="live refresh seconds")
     a = ap.parse_args()
 
@@ -95,7 +103,7 @@ def main() -> None:
     db = sqlite3.connect(a.db)
     fig, axes = plt.subplots(2, 2, figsize=(13, 8))
     axes = axes.flatten()
-    draw(axes, load(db, a.minutes))
+    draw(axes, load(db, a.minutes), a.ssid)
     fig.tight_layout()
     if a.save:
         fig.savefig(a.save, dpi=110)
@@ -104,7 +112,7 @@ def main() -> None:
     plt.ion()
     plt.show()
     while plt.fignum_exists(fig.number):
-        draw(axes, load(db, a.minutes))
+        draw(axes, load(db, a.minutes), a.ssid)
         fig.tight_layout()
         plt.pause(a.interval)
 
