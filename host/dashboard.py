@@ -92,10 +92,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default="data/capture.db")
     ap.add_argument("--save", help="write a PNG and exit")
-    ap.add_argument("--minutes", type=float, help="only the last N minutes")
+    ap.add_argument("--minutes", type=float,
+                    help="only the last N minutes (live default: 10; with --save default: everything)")
     ap.add_argument("--ssid", help="plot only networks whose name contains this text")
     ap.add_argument("--interval", type=float, default=2.0, help="live refresh seconds")
     a = ap.parse_args()
+    if a.minutes is None and not a.save:
+        a.minutes = 10  # live view: otherwise old runs in the same DB squash new data to the right edge
 
     if a.save:
         import matplotlib
