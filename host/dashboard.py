@@ -24,7 +24,21 @@ def load(db: sqlite3.Connection, minutes: float | None):
     }
 
 
-def draw(axes, d, ssid: str | None = None) -> None:
+def with_gaps(pts: list, max_gap: float = 10.0) -> tuple[list, list]:
+    """(x, y) lists with a None inserted wherever samples are > max_gap s apart, so the line breaks
+    instead of joining across a period when nothing was logged."""
+    xs: list = []
+    ys: list = []
+    for i, (t, v) in enumerate(pts):
+        if i and t - pts[i - 1][0] > max_gap:
+            xs.append(t)
+            ys.append(None)
+        xs.append(t)
+        ys.append(v)
+    return xs, ys
+
+
+def draw(axes, d, name_filter: str | None = None) -> None:
     ax_rssi, ax_act, ax_aps, ax_pps = axes
     for a in axes:
         a.clear()
@@ -37,30 +51,29 @@ def draw(axes, d, ssid: str | None = None) -> None:
         names[bssid] = ssid or bssid
     if series:
         t0 = d["ap"][0][0]
-        if ssid:
-            chosen = [b for b in series if ssid.lower() in names[b].lower()]
+        if name_filter:
+            chosen = [b for b in series if name_filter.lower() in names[b].lower()]
         else:
             mean = lambda b: sum(r for _, r in series[b]) / len(series[b])
             chosen = sorted(series, key=lambda b: -mean(b))[:6]
         for bssid in chosen:
-            pts = series[bssid]
-            ax_rssi.plot([t - t0 for t, _ in pts], [r for _, r in pts], label=names[bssid])
+            xs, ys = with_gaps(series[bssid])
+            ax_rssi.plot([x - t0 for x in xs], ys, label=names[bssid])
         if chosen:
             ax_rssi.legend(fontsize=7, loc="lower right")
     ax_rssi.set(title="RSSI vs time", xlabel="s", ylabel="dBm")
 
-    # 2. Channel activity: frames per second spent listening (delta frames / delta dwell)
-    first: dict[int, tuple] = {}
-    last: dict[int, tuple] = {}
+    # 2. Channel activity: frames per second spent listening. Counters are cumulative and restart at 0
+    #    when the board resets, so sum the per-sample increases and skip any step that goes backwards.
+    prev: dict[int, tuple] = {}
+    frames_sum = {c: 0 for c in CHANNELS}
+    dwell_sum = {c: 0 for c in CHANNELS}
     for _, ch, dwell, frames, _ in d["ch"]:
-        first.setdefault(ch, (dwell, frames))
-        last[ch] = (dwell, frames)
-    rates = []
-    for ch in CHANNELS:
-        if ch in last and last[ch][0] > first[ch][0]:
-            rates.append((last[ch][1] - first[ch][1]) / ((last[ch][0] - first[ch][0]) / 1000))
-        else:
-            rates.append(0)
+        if ch in prev and dwell >= prev[ch][0] and frames >= prev[ch][1]:
+            dwell_sum[ch] += dwell - prev[ch][0]
+            frames_sum[ch] += frames - prev[ch][1]
+        prev[ch] = (dwell, frames)
+    rates = [frames_sum[c] / (dwell_sum[c] / 1000) if dwell_sum[c] else 0 for c in CHANNELS]
     ax_act.bar(CHANNELS, rates)
     ax_act.set(title="Channel activity", xlabel="channel", ylabel="frames/s while listening",
                xticks=CHANNELS)
@@ -75,13 +88,13 @@ def draw(axes, d, ssid: str | None = None) -> None:
     # 4. packets/sec  (only meaningful averaged over a hop cycle, so also plot a 13 s mean)
     if d["pkt"]:
         t0 = d["pkt"][0][0]
-        xs = [t - t0 for t, _ in d["pkt"]]
+        ts = [t - t0 for t, _ in d["pkt"]]
         ys = [p for _, p in d["pkt"]]
-        ax_pps.plot(xs, ys, alpha=0.4, label="1 s")
+        ax_pps.plot(*with_gaps(list(zip(ts, ys))), alpha=0.4, label="1 s")
         w = 13
         if len(ys) >= w:
             sm = [sum(ys[i - w + 1:i + 1]) / w for i in range(w - 1, len(ys))]
-            ax_pps.plot(xs[w - 1:], sm, label="13 s mean (one hop cycle)")
+            ax_pps.plot(*with_gaps(list(zip(ts[w - 1:], sm))), label="13 s mean (one hop cycle)")
         ax_pps.legend(fontsize=7)
     ax_pps.set(title="Packets per second", xlabel="s", ylabel="frames/s")
 
