@@ -34,7 +34,9 @@ TABLES = {AP_INFO: "ap_info", CHANNEL_STATS: "channel_stats",
 
 def open_db(path: str) -> sqlite3.Connection:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path)
+    db = sqlite3.connect(path, timeout=30)
+    # WAL lets the dashboard read while this process writes; without it a slow reader makes commit() fail
+    db.execute("PRAGMA journal_mode=WAL")
     db.executescript(SCHEMA)
     return db
 
@@ -70,7 +72,10 @@ class Sink:
             self._csv[table][1].writerow(row)
 
     def flush(self) -> None:
-        self.db.commit()
+        try:
+            self.db.commit()
+        except sqlite3.OperationalError as e:  # still locked after the timeout: keep rows, retry next flush
+            print(f"[{time.strftime('%H:%M:%S')}] db busy, will retry: {e}")
         for f, _ in self._csv.values():
             f.flush()
 

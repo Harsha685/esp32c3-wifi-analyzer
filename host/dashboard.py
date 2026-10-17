@@ -103,7 +103,7 @@ def main() -> None:
     if a.save:
         import matplotlib
         matplotlib.use("Agg")
-    db = sqlite3.connect(a.db)
+    db = sqlite3.connect(a.db, timeout=30)
     fig, axes = plt.subplots(2, 2, figsize=(13, 8))
     axes = axes.flatten()
     draw(axes, load(db, a.minutes), a.ssid)
